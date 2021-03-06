@@ -2,6 +2,7 @@ import time
 import sys
 import subprocess
 import boto.route53
+# add argparse here
 
 Conn=boto.route53.connect_to_region('us-west-2')
 
