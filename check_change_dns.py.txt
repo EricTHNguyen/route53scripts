@@ -30,3 +30,4 @@ while valid:
                  with open('/var/log/check_ip.log', 'a') as f:
                         sys.stdout = f
                         print (time.strftime("%c"), "Endpoint returns empty string, please check DNS", URLcurr,time.sleep(10))
+                        # testing
