@@ -1,0 +1,32 @@
+import time
+import sys
+import subprocess
+import boto.route53
+
+Conn=boto.route53.connect_to_region('us-west-2')
+
+valid =True
+while valid:
+        Route53URLip = 'prod-stack001.basecloud.io'
+        URLcurr = 'prod-stack-002.basecloud.io'
+        Route53Domain = 'basecloud.io'
+        CheckRoute53DNS = subprocess.check_output(['dig', '+tcp', '+short', Route53URLip])
+        CheckSQLDNS = subprocess.check_output(['dig','+tcp', '+short', URLcurr])
+        if CheckSQLDNS != "":
+                if CheckSQLDNS != CheckRoute53DNS:
+                        Zone = Conn.get_zone( Route53Domain )
+                        ChangeSet = boto.route53.record.ResourceRecordSets(Conn, Zone.id)
+                        Changes1 = ChangeSet.add_change("UPSERT", Route53URLip, type="A")
+                        Changes1.add_value(CheckSQLDNS)
+                        ChangeSet.commit()
+                        with open('/var/log/check_ip.log', 'a') as f:
+                                sys.stdout = f
+                                print (time.strftime("%c"), "DNS changed to ... ", CheckSQLDNS,)
+                else:
+                 with open('/var/log/check_ip.log', 'a') as f:
+                        sys.stdout = f
+                        print (time.strftime("%c"), "DNS is still ... Route53 =>", CheckRoute53DNS,)
+        else:
+                 with open('/var/log/check_ip.log', 'a') as f:
+                        sys.stdout = f
+                        print (time.strftime("%c"), "Endpoint returns empty string, please check DNS", URLcurr,time.sleep(10))
