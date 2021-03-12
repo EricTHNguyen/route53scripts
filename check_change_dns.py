@@ -2,10 +2,17 @@ import time
 import sys
 import subprocess
 import boto.route53
-# add argparse here
+import argparse
 
 Conn=boto.route53.connect_to_region('us-west-2')
-
+def get_arg_parse():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-r', '--region', choices=['us-west-2', 'eu-west-1', 'us-east-1', 'eu-central-1'], required = False, default='us-west-2',
+                        help="Region to connect to")
+    return parser
+parser = get_arg_parse()
+args = parser.parse_args()
 valid =True
 while valid:
         Route53URLip = 'prod-stack001.basecloud.io'
