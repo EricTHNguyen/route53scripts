@@ -1,3 +1,7 @@
+"""
+This module contains HTTP transports used for communicating with the
+Route53 API endpoint.
+"""
 import time
 import base64
 import hmac
