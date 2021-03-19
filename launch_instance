@@ -1,3 +1,5 @@
+"""Create and launch a machine instance in AWS using a config file
+"""
 import ConfigParser
 import boto.iam
 import argparse
@@ -10,14 +12,23 @@ import subprocess
 import time
 from jira import JIRA
 def get_arg_parse():
-        parser= argparse.ArgumentParser(description=_doc_,formatter_class=argparse.RawDescriptionHelpFormatter)
-        parser.add_argument('-c','--conf',required=True, help="Path to the config file")
-        parser.add_argument('-n','--instance-number', type=int, default=1, help='Used to make unique instance names(>
-        parser.add_argument('-N','--env-number', default=1, help="Used to make multiple environments. E.g., qa01, qa>
-        parser.add_argument('-t','--jiraticket',help="Jira ticket number if you want any jira comment")
-        parser.add_argument('-b','--billing',help="Billing code tag")
-        parser.add_argument('-k','--keypair',help="Keypair name")
-        return parser
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-c', '--conf', required = True,
+                        help="Path to the config file")
+    parser.add_argument('-n','--instance-number', type = int, default = 1,
+                        help="Used to make unique instance names (default: %(default)s)")
+    parser.add_argument('-N','--env-number', default = 1,
+                        help="Used to make multiple environments. E.g., qa01, qa02, qa03, etc. (default: %(default)s)")
+    parser.add_argument('-o','--owner', default = os.environ['USER'],
+                        help="Who's responsible for this instance (default: %(default)s)")
+    parser.add_argument('-t','--jiraticket',
+                        help="Jira ticket number if you want any jira comment")
+    parser.add_argument('-b','--billing',
+                        help="Billing code tag")
+    parser.add_argument('-k','--keypair',
+                        help="Keypair name")
+    return parser
 def get_config( parsed_args ):
     config = ConfigParser.SafeConfigParser()
     config.add_section('vm')
@@ -26,7 +37,7 @@ def get_config( parsed_args ):
     config.read(parsed_args.conf)
     return config
 class LaunchInstance(object):
-
+    
     def __init__( self, args, config ):
         self.config = config
         self.region = config.get( 'vm', 'region' )
@@ -37,7 +48,7 @@ class LaunchInstance(object):
         except boto.exception.BotoServerError:
             # This is for aws machines with iam policy attached
             iamrole = os.popen("curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/").read()
-            accountNum = conn_iam.get_instance_profile(iamrole)['get_instance_profile_response']['get_instance_profi>
+            accountNum = conn_iam.get_instance_profile(iamrole)['get_instance_profile_response']['get_instance_profile_result']['instance_profile']['arn'].split(':')[4]
         # This is new Dev account
         if accountNum == 'ACCCOUNT_AWS':
             self.region_info = {'us-west-2':
@@ -56,7 +67,7 @@ class LaunchInstance(object):
         else:
             self.region_info = {'us-west-2':
                     { 'domains': ['usw2.basecloud.io', 'it.basecloud.io'],
- 'short_name': 'usw2'
+                     'short_name': 'usw2'
                     }, 'eu-west-1':
                     { 'domains': ['euw1.basecloud.io', 'it.basecloud.io'],
                      'short_name': 'euw1'
@@ -68,11 +79,12 @@ class LaunchInstance(object):
                      'short_name': 'euc1'
                     }
                 }
-if not 'AWS_CREDENTIAL_FILE' in os.environ:
+        
+        if not 'AWS_CREDENTIAL_FILE' in os.environ:
             os.environ['AWS_CREDENTIAL_FILE'] = os.environ['HOME'] + "/.aws/credentials"
-
+        
         self.ec2 = boto.ec2.connect_to_region( self.region )
-
+        
         self.image_id = config.get( 'vm', 'image_Id' )
         self.inst_type = config.get( 'vm', 'inst_type' )
         self.product = config.get( 'tags', 'product' )
@@ -91,18 +103,18 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
             self.block_map = None
         elif self.product == 'es' :
             self.block_map = None
-            print ("Ignoring ephemeral volumes for es")
+            print "Ignoring ephemeral volumes for es"
         elif "t2." not in self.inst_type :
             self.block_map = self.block_dev_map()
         else:
-            print ("Ignoring block_dev_map")
+            print "Ignoring block_dev_map"
             self.block_map = None
         name_tag = 'None'
         if self.image.tags.has_key('Name') and self.image.tags['Name'].strip():
             name_tag = self.image.tags['Name'].strip()
-             print ("Image id: %s\nImage name: %s\nImage description: %s\nImage name tag: %s" % (
-                self.image_id, self.image.name, self.image.description, name_tag))
-
+        print "Image id: %s\nImage name: %s\nImage description: %s\nImage name tag: %s" % (
+                self.image_id, self.image.name, self.image.description, name_tag)
+        
         component = config.get( 'tags', 'component' ).strip()
         component_name = component.split('_')[0] + str(args.env_number).strip().zfill(2)
         product = config.get( 'tags', 'product' ).strip()
@@ -119,7 +131,7 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
                             str(args.instance_number).strip().zfill(3)
                             )
         filters = {"tag:Name" : self.name}
-        reservations = self.ec2.get_all_reservations(filters=filters)
+        reservations = self.ec2.get_all_reservations(filters=filters)        
         self.hostgroup = ( self.region_info[self.region]['short_name'] + "-" +
                             component_name + "-" +
                             product_name
@@ -129,22 +141,22 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
             for reservation in reservations:
                 for instance in reservation.instances:
                     if instance.state != 'terminated':
-                        raise ValueError( "An instance with name %s already exists. Remove it or pick a different in>
-
-        print ("Starting instance. This can take several minutes...")
+                        raise ValueError( "An instance with name %s already exists. Remove it or pick a different instance number" % (self.name) )
+        
+        print "Starting instance. This can take several minutes..."
         self.launch_instance();
-        print ("Instance id", self.instance.id)
+        print "Instance id", self.instance.id
         if self.image.platform == 'windows':
             self.block_map = self.windows_block_dev_map()
         for (each_key, each_val) in self.config.items('tags'):
-            if each_key not in ('hostgroup', 'billing', 'component', 'product', 'billingcode', 'environment', 'regio>
+            if each_key not in ('hostgroup', 'billing', 'component', 'product', 'billingcode', 'environment', 'region', 'vertical', 'productgroup'):
                 self.instance.add_tag( each_key, each_val)
-
+        
         self.instance.add_tag( 'Name', self.name)
         self.instance.add_tag( 'Billing_Code', self.billing )
         self.instance.add_tag( 'Owner', args.owner)
         self.instance.add_tag( 'Hostgroup', self.hostgroup )
-          self.instance.add_tag( 'Component', component )
+        self.instance.add_tag( 'Component', component )
         self.instance.add_tag( 'Product', product )
         self.instance.add_tag( 'BillingCode', self.BillingCode )
         self.instance.add_tag( 'Environment', self.Environment )
@@ -152,46 +164,46 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
         self.instance.add_tag( 'Vertical', self.Vertical )
         self.instance.add_tag( 'ProductGroup', self.ProductGroup )
         self.instance.add_tag( 'Stack', self.stack )
-
+        
         self.route53_upsert()
-
-        print ("Instance %s (%s) launched successfully" % ( self.name, self.instance.id ))
+        
+        print "Instance %s (%s) launched successfully" % ( self.name, self.instance.id )
     def windows_block_dev_map( self ):
-        block = self.ec2.get_instance_attribute(instance_id=self.instance.id, attribute='blockDeviceMapping')['block>
+        block = self.ec2.get_instance_attribute(instance_id=self.instance.id, attribute='blockDeviceMapping')['blockDeviceMapping']
         bdm = boto.ec2.blockdevicemapping.BlockDeviceMapping()
         for key in block:
             bdm[key] = boto.ec2.blockdevicemapping.BlockDeviceType(delete_on_termination=True)
             self.ec2.modify_instance_attribute(self.instance.id, "BlockDeviceMapping", bdm)
-
+        
     def block_dev_map( self ):
-
+        
         sorted_devnames = sorted( self.image.block_device_mapping )
         root_dev_name = sorted_devnames[0]
         root_snapshot_id = self.image.block_device_mapping[root_dev_name].snapshot_id
-
+        
         root_dev_map = boto.ec2.blockdevicemapping.BlockDeviceMapping()
-
+        
         root_dev = boto.ec2.blockdevicemapping.BlockDeviceType();
         root_dev.volume_type = self.config.get( 'vm', 'vol_type' )
         root_dev.snapshot_id = root_snapshot_id
         root_dev.delete_on_termination = True
-
+        
         root_dev_map[root_dev_name] = root_dev
-
+        
         no_dev = boto.ec2.blockdevicemapping.BlockDeviceType()
         no_dev.no_device = True
-
+        
         ephemerals = []
         for i in range(0, 4):
             ephemeral = boto.ec2.blockdevicemapping.BlockDeviceType()
             ephemeral.ephemeral_name = "ephemeral%s" % (i)
             ephemerals.append(ephemeral)
-
+        
         # Build two lists, a list of regexes to match EC2 instance types, and a corresponding
         # list of ephemeral block device mappings for the instance types that match the regex
         regexes = []
         block_maps = []
-
+        
         # These instance types get no ephemeral volumes
         regexes.append( re.compile('^(m4|m5)\.\S+$') )
         dev_map = copy.copy(root_dev_map)
@@ -200,7 +212,8 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
         dev_map['/dev/sdd'] = no_dev
         dev_map['/dev/sde'] = no_dev
         block_maps.append( dev_map )
-         # These instance types only get one ephemeral volume for free from Amazon
+        
+        # These instance types only get one ephemeral volume for free from Amazon
         regexes.append( re.compile('^((r3|r4)\.\S+)|(m3\.(medium|large))$') )
         dev_map = copy.copy(root_dev_map)
         dev_map['/dev/sdb'] = ephemerals[0]
@@ -208,7 +221,7 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
         dev_map['/dev/sdd'] = no_dev
         dev_map['/dev/sde'] = no_dev
         block_maps.append( dev_map )
-
+        
         # These instance types get two ephemeral volumes for free from Amazon
         regexes.append( re.compile('^((c5|c4|c3)\.\S+)|(m3\.(xlarge|2xlarge))$') )
         dev_map = copy.copy(root_dev_map)
@@ -217,7 +230,7 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
         dev_map['/dev/sdd'] = no_dev
         dev_map['/dev/sde'] = no_dev
         block_maps.append( dev_map )
-
+        
         # These instance types get four ephemeral volumes for free from Amazon
         # Comments in the shell version read "Actually a i2.4xlarge"
         regexes.append( re.compile('^(c1\.\S+)|(i2\.\S+)$') )
@@ -227,15 +240,15 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
         dev_map['/dev/sdd'] = ephemerals[2]
         dev_map['/dev/sde'] = ephemerals[3]
         block_maps.append( dev_map )
-
+        
         # Match the instance type to its ephemeral block devices
         instance_type = self.config.get( 'vm', 'inst_type' ).strip()
         for i in range(0, len(regexes)):
             if regexes[i].match(instance_type):
                 return block_maps[i]
-
+        
         raise ValueError( "Unsupported instance type", instance_type )
-
+        
     def launch_instance( self ):
         try:
             res = self.ec2.run_instances(
@@ -244,26 +257,26 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
                                     instance_type = self.config.get( 'vm', 'inst_type' ).strip(),
                                     subnet_id = self.config.get( 'vm', 'subnet' ).strip(),
                                     block_device_map = self.block_map,
-                                    instance_initiated_shutdown_behavior = self.config.get( 'vm', 'shutdown_behavior>
-                                    security_group_ids = map( str.strip, self.config.get( 'vm', 'sgids' ).split( ','>
+                                    instance_initiated_shutdown_behavior = self.config.get( 'vm', 'shutdown_behavior' ).strip(),
+                                    security_group_ids = map( str.strip, self.config.get( 'vm', 'sgids' ).split( ',' ) ),
                                     instance_profile_name = self.config.get( 'vm', 'iam_profile' ).strip()
                                     )
-
+            
             instance = res.instances[0]
             status = instance.update()
             for _ in range(0,60):
                 if status == 'running':
-                 break
+                    break
                 time.sleep(5)
                 status = instance.update()
-
+    
             if status == 'running':
                 self.instance = instance
             else:
                 raise RuntimeError( "Error: instance did not come up in 5 minutes" )
-
+                
         except boto.exception.EC2ResponseError as detail:
-            print ('EC2 error:', detail)
+            print 'EC2 error:', detail
             raise detail
     def route53_upsert( self ):
         domains = self.region_info[self.region]['domains']
@@ -273,16 +286,16 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
             zone_ids = ''
         try:
             conn = boto.route53.connect_to_region( self.region )
-            ip_addr = self.instance.private_ip_address
-            for domain in domains:
-                if zone_ids:
-                    for zone_id in zone_ids:
+            ip_addr = self.instance.private_ip_address 
+            for domain in domains:    
+                if zone_ids: 
+                    for zone_id in zone_ids: 
                         fqdn = self.name + "." + domain
                         change_set = boto.route53.record.ResourceRecordSets( conn, zone_id )
                         changes1 = change_set.add_change( "UPSERT", fqdn, type="A" )
                         changes1.add_value( ip_addr )
                         change_set.commit()
-                        print ("Added an A record pointing %s to %s" % (fqdn, ip_addr))
+                        print "Added an A record pointing %s to %s" % (fqdn, ip_addr)
                 else:
                     zone = conn.get_zone( domain )
                     fqdn = self.name + "." + domain
@@ -290,23 +303,20 @@ if not 'AWS_CREDENTIAL_FILE' in os.environ:
                     changes1 = change_set.add_change( "UPSERT", fqdn, type="A" )
                     changes1.add_value( ip_addr )
                     change_set.commit()
-                    print ("Added an A record pointing %s to %s" % (fqdn, ip_addr))
-
+                    print "Added an A record pointing %s to %s" % (fqdn, ip_addr)
+                
         except boto.route53.exception.DNSServerError as detail:
-            print ('Route53 error:', detail)
+            print 'Route53 error:', detail
             raise detail
         if args.jiraticket:
-           comment = "Added an A record pointing %s to %s" % (self.name+".it.basecloud.io" , self.instance.private_i>
+           comment = "Added an A record pointing %s to %s" % (self.name+".it.basecloud.io" , self.instance.private_ip_address)
            self.write_jira_comment(args.jiraticket, comment)
     def write_jira_comment( self, jiraticket, comment ):
       jira = JIRA((os.environ['JIRAURL']),basic_auth=(os.environ['JIRAUSER'], os.environ['JIRAPASSWORD']))
       issue = jira.issue(jiraticket)
       jira.add_comment(issue, comment)
-      print ("Added Ec2 Instace details in %s jiraticket" %jiraticket)
+      print "Added Ec2 Instace details in %s jiraticket" %jiraticket 
 parser = get_arg_parse()
 args = parser.parse_args()
 config = get_config(args)
-LaunchInstance( args=args, config=config )
-
-
-
+LaunchInstance( args=args, config=config ) 
